@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #ffffff;
+  --bg-tint: #f6f7f9;
+  --panel: #ffffff;
+  --panel-soft: #fafbfc;
+  --line: #e3e7ee;
+  --line-strong: #d0d7e2;
+  --text-strong: #111827;
+  --text-normal: #374151;
+  --text-muted: #6b7280;
+  --primary: #1f64c7;
+  --primary-hover: #1a53a3;
+  --primary-soft: rgba(31, 100, 199, 0.08);
+  --primary-outline: rgba(31, 100, 199, 0.32);
+  --success: #217a4b;
+  --warning: #9f6015;
+  --shadow: 0 18px 34px -28px rgba(17, 24, 39, 0.2);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --transition: 180ms ease;
+  --titlebar-height: 36px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0f12;
+    --bg-tint: #12161c;
+    --panel: #171c23;
+    --panel-soft: #1d242d;
+    --line: #2b3440;
+    --line-strong: #3a4756;
+    --text-strong: #f3f4f6;
+    --text-normal: #d5dae1;
+    --text-muted: #9aa5b3;
+    --primary: #4e8eea;
+    --primary-hover: #3b78cf;
+    --primary-soft: rgba(78, 142, 234, 0.14);
+    --primary-outline: rgba(78, 142, 234, 0.35);
+    --success: #33a26a;
+    --warning: #d98a2b;
+    --shadow: 0 22px 42px -28px rgba(0, 0, 0, 0.85);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body {
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text-normal);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+}
+
+button,
+input,
+select,
+textarea,
+label,
+a,
+[role="button"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+code,
+kbd,
+pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}

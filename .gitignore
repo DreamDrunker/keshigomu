@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Frontend build outputs
+dist/
+
+# TypeScript build cache
+.tsbuild/
+*.tsbuildinfo
+vite.config.d.mts
+
+# Rust / Tauri build outputs
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+bun-debug.log*
+
+# OS junk
+.DS_Store
