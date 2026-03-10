@@ -15,6 +15,7 @@ use crate::cleanup::domain::types::{
 use crate::cleanup::infrastructure::executor;
 use crate::cleanup::infrastructure::history_store;
 use crate::cleanup::infrastructure::inspector;
+use crate::cleanup::infrastructure::paths;
 use crate::cleanup::infrastructure::scanner;
 use crate::cleanup::CleanupState;
 use crate::settings;
@@ -165,8 +166,8 @@ impl<'a> CleanupApplication<'a> {
             .scan
             .roots
             .iter()
-            .map(|root| Self::resolve_scan_root_path(&root.path))
-            .map(|root| std::fs::canonicalize(&root).unwrap_or(root))
+            .map(|root| paths::resolve_path_from_user_input(&root.path))
+            .map(|root| paths::canonicalize_or_path(&root))
             .collect::<Vec<_>>();
         if roots.is_empty() {
             return Err(CleanupError::ScanRootsEmpty.into());
@@ -189,26 +190,5 @@ impl<'a> CleanupApplication<'a> {
                 ..entry
             })
             .collect::<Vec<_>>())
-    }
-
-    fn resolve_scan_root_path(path: &str) -> PathBuf {
-        let expanded_path = Self::expand_home_path(path.trim());
-        if expanded_path.is_absolute() {
-            return expanded_path;
-        }
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(expanded_path)
-    }
-
-    fn expand_home_path(path: &str) -> PathBuf {
-        let home_dir = std::env::var("HOME").unwrap_or_default();
-        if path == "~" {
-            return PathBuf::from(home_dir);
-        }
-        path.strip_prefix("~/").map_or_else(
-            || PathBuf::from(path),
-            |rest| PathBuf::from(home_dir).join(rest),
-        )
     }
 }
