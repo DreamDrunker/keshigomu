@@ -243,3 +243,144 @@ pub fn run_auto_cleanup(
         run_id: Some(output.run_id),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        auto_cleanup_entries, due_for_auto_cleanup, remaining_days, should_select_auto_item,
+    };
+    use crate::cleanup::domain::policy;
+    use crate::cleanup::domain::types::{BuildCleanupPlanRequest, CleanupPlanItem, CleanupRisk};
+    use crate::cleanup::CleanupState;
+    use crate::settings::types::AppSettings;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_temp_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("keshigomu-auto-runner-{name}-{stamp}"))
+    }
+
+    fn write_file(path: &Path, size: usize) {
+        path.parent().map(fs::create_dir_all);
+        let _ = fs::write(path, vec![1_u8; size]);
+    }
+
+    #[test]
+    fn due_for_auto_cleanup_respects_force_and_elapsed_interval() {
+        assert!(due_for_auto_cleanup(
+            crate::cleanup::domain::types::RunAutoCleanupRequest { force: true },
+            30,
+            Some(u64::MAX),
+        ));
+        assert!(due_for_auto_cleanup(
+            crate::cleanup::domain::types::RunAutoCleanupRequest { force: false },
+            30,
+            None,
+        ));
+        assert!(!due_for_auto_cleanup(
+            crate::cleanup::domain::types::RunAutoCleanupRequest { force: false },
+            30,
+            Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or(0)
+            ),
+        ));
+    }
+
+    #[test]
+    fn remaining_days_rounds_up_partial_days() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0);
+        let last_run = now.saturating_sub(86_400 + 1);
+
+        assert!(remaining_days(3, last_run) >= 2);
+    }
+
+    #[test]
+    fn should_select_auto_item_blocks_recent_cache_but_allows_low_risk_build_output() {
+        let cache_dir = test_temp_dir("recent-cache");
+        let build_dir = test_temp_dir("build-output");
+        let _ = fs::create_dir_all(&cache_dir);
+        let _ = fs::create_dir_all(&build_dir);
+        let cache_path = cache_dir.join(".turbo/cache.bin");
+        let build_path = build_dir.join("dist/index.js");
+        write_file(&cache_path, 8);
+        write_file(&build_path, 8);
+
+        let settings = AppSettings::default();
+        let effective_policy = policy::resolve_effective_project_policy(&settings, "project-a");
+        let cache_item = CleanupPlanItem {
+            item_id: "cache".to_string(),
+            label: "cache".to_string(),
+            path: cache_path.to_string_lossy().to_string(),
+            estimated_size_bytes: 8,
+            risk: CleanupRisk::Low,
+            recommended: true,
+            source: None,
+            confidence: None,
+            category: Some("cache".to_string()),
+        };
+        let build_item = CleanupPlanItem {
+            item_id: "dist".to_string(),
+            label: "dist".to_string(),
+            path: build_dir.join("dist").to_string_lossy().to_string(),
+            estimated_size_bytes: 8,
+            risk: CleanupRisk::Low,
+            recommended: true,
+            source: None,
+            confidence: None,
+            category: Some("build".to_string()),
+        };
+
+        assert!(!should_select_auto_item(
+            &cache_item,
+            &effective_policy,
+            &settings,
+        ));
+        assert!(should_select_auto_item(
+            &build_item,
+            &effective_policy,
+            &settings,
+        ));
+
+        let _ = fs::remove_dir_all(&cache_dir);
+        let _ = fs::remove_dir_all(&build_dir);
+    }
+
+    #[test]
+    fn auto_cleanup_entries_select_only_low_risk_items_for_eligible_projects() {
+        let project_dir = test_temp_dir("entries");
+        let _ = fs::create_dir_all(&project_dir);
+        write_file(&project_dir.join("dist/index.js"), 16);
+        write_file(&project_dir.join("node_modules/pkg/index.js"), 16);
+
+        let state = CleanupState::default();
+        let settings = AppSettings::default();
+        let project_id = project_dir.to_string_lossy().to_string();
+        let entries = auto_cleanup_entries(
+            &state,
+            &settings,
+            BuildCleanupPlanRequest {
+                project_ids: vec![project_id.clone()],
+            },
+            &HashMap::from([(project_id.clone(), 31)]),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].project_id, project_id);
+        assert_eq!(entries[0].safe_mode, Some(true));
+        assert_eq!(entries[0].selected_item_ids.len(), 1);
+
+        let _ = fs::remove_dir_all(&project_dir);
+    }
+}

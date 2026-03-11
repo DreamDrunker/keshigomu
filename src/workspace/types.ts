@@ -27,6 +27,15 @@ export type ThemeVars = Record<string, string>;
 export type ProjectCommand = {
   label: string;
   command: string;
+  scriptName?: string;
+  resolvedCommand?: string;
+};
+
+export type ProjectTechnology = {
+  languages: string[];
+  frameworks: string[];
+  buildTools: string[];
+  commandRunner: string | null;
 };
 
 export type ProjectSnapshot = {
@@ -38,8 +47,7 @@ export type ProjectSnapshot = {
   inactiveDays: number;
   kind: "repo-root" | "package" | "single";
   profile: string;
-  stack: string;
-  runtime: string;
+  technology: ProjectTechnology;
   workspaceRole: string;
   workspaceUnits: number;
   startupCommands: ProjectCommand[];

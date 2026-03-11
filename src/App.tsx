@@ -4,17 +4,22 @@ import {
   createResource,
   createSignal,
   onCleanup,
+  onMount,
 } from "solid-js";
+import {
+  buildSettingsSnapshot,
+  hydrateStateFromSettings,
+  shouldAutoScanProjects,
+} from "./appSettings";
 import { useApperance } from "./hooks/useApperance";
 import { useCleanup } from "./hooks/useCleanup";
 import { useProject } from "./hooks/useProject";
 import { useScanRoots } from "./hooks/useScanRoots";
-import { CleanupPage } from "./routes/cleanupPage";
-import { Layout } from "./routes/layout";
-import { ManagePage } from "./routes/managePage";
-import { SettingsPage } from "./routes/settingsPage";
+import { CleanupPage } from "./routes/cleanup";
+import { Layout } from "./routes/layout/index";
+import { ManagePage } from "./routes/manage";
+import { SettingsPage } from "./routes/settings";
 import { loadSettings, saveSettingsPatch } from "./services/settingsClient";
-import type { MonorepoMode, ThemeKey, ThemeVars } from "./workspace/types";
 
 const persistDebounceMs = 900;
 
@@ -28,115 +33,34 @@ const App = () => {
     string | null
   >(null);
 
-  const appearanceSnapshot = () => ({
-    activeTheme: appearance.activeTheme(),
-    customTheme: { ...appearance.customTheme() },
-    customCssText: appearance.customCssText(),
-    customCssFileName: appearance.customCssFileName(),
-  });
-
-  const projectSnapshot = () => ({
-    monorepoMode: project.monorepoMode(),
-  });
-
-  const scanSnapshot = () => ({
-    roots: scan.scanRoots().map((root) => ({
-      path: root.path,
-      depth: Math.max(1, Math.round(Number(root.depth || 1))),
-    })),
-  });
-
-  const cleanupSnapshot = () => ({
-    globalPolicy: {
-      safeMode: cleanup.safeMode(),
-      cleanupThresholdDays: Math.max(
-        1,
-        Math.round(Number(cleanup.cleanupThresholdDays() || 1)),
-      ),
-      riskProfile: { ...cleanup.cleanupRiskProfile() },
-    },
-    autoPlan: {
-      enabled: cleanup.autoCleanupEnabled(),
-      intervalDays: Math.max(
-        1,
-        Math.round(Number(cleanup.autoCleanupIntervalDays() || 1)),
-      ),
-    },
-    projectPolicies: cleanup.projectPolicyOverrides(),
-    projectPlanSelections: cleanup.projectPlanSelections(),
-  });
+  const settingsSnapshot = () =>
+    buildSettingsSnapshot({
+      appearance,
+      project,
+      scan,
+      cleanup,
+    });
 
   createEffect(() => {
-    if (!settingsResource()) return;
-    appearance.setActiveTheme(
-      settingsResource()!.appearance.activeTheme as ThemeKey,
-    );
-    appearance.setCustomTheme(
-      settingsResource()!.appearance.customTheme as ThemeVars,
-    );
-    appearance.setCustomCssText(
-      settingsResource()!.appearance.customCssText || "",
-    );
-    appearance.setCustomCssFileName(
-      settingsResource()!.appearance.customCssFileName || "",
-    );
-  });
-
-  createEffect(() => {
-    if (!settingsResource()) return;
-    project.setMonorepoMode(
-      settingsResource()!.project.monorepoMode as MonorepoMode,
-    );
-    project.setSelectedProjectId(settingsResource()!.project.selectedProjectId);
-  });
-
-  createEffect(() => {
-    if (!settingsResource()) return;
-    scan.replaceScanRoots(settingsResource()!.scan.roots);
-  });
-
-  createEffect(() => {
-    if (!settingsResource()) return;
-    cleanup.setSafeMode(
-      Boolean(settingsResource()!.cleanup.globalPolicy.safeMode),
-    );
-    cleanup.setCleanupThresholdDays(
-      settingsResource()!.cleanup.globalPolicy.cleanupThresholdDays,
-    );
-    cleanup.setCleanupRiskProfile(
-      settingsResource()!.cleanup.globalPolicy.riskProfile ?? cleanup.cleanupRiskProfile(),
-    );
-    cleanup.setAutoCleanupEnabled(
-      Boolean(settingsResource()!.cleanup.autoPlan?.enabled ?? true),
-    );
-    cleanup.setAutoCleanupIntervalDays(
-      settingsResource()!.cleanup.autoPlan?.intervalDays ?? 30,
-    );
-    cleanup.replaceProjectPolicyOverrides(
-      settingsResource()!.cleanup.projectPolicies,
-    );
-    cleanup.replaceProjectPlanSelections(
-      settingsResource()!.cleanup.projectPlanSelections,
-    );
+    const settings = settingsResource();
+    if (!settings) return;
+    hydrateStateFromSettings(settings, {
+      appearance,
+      project,
+      scan,
+      cleanup,
+    });
   });
 
   createEffect(() => {
     if (lastPersistedPayload() !== null) return;
     if (settingsResource.loading) return;
-    setLastPersistedPayload(
-      JSON.stringify({
-        appearance: appearanceSnapshot(),
-        project: projectSnapshot(),
-        scan: scanSnapshot(),
-        cleanup: cleanupSnapshot(),
-      }),
-    );
+    setLastPersistedPayload(JSON.stringify(settingsSnapshot()));
   });
 
   createEffect(() => {
-    if (!settingsResource()) return;
-    if (lastPersistedPayload() === null) return;
-    if (scan.lastScanAt()) return;
+    if (!shouldAutoScanProjects(Boolean(settingsResource()), lastPersistedPayload(), scan.lastScanAt()))
+      return;
     scan.autoScanProjects();
   });
 
@@ -144,12 +68,7 @@ const App = () => {
     if (settingsResource.loading) return;
     const previousPayload = lastPersistedPayload();
     if (previousPayload === null) return;
-    const currentSnapshot = {
-      appearance: appearanceSnapshot(),
-      project: projectSnapshot(),
-      scan: scanSnapshot(),
-      cleanup: cleanupSnapshot(),
-    };
+    const currentSnapshot = settingsSnapshot();
     const payload = JSON.stringify(currentSnapshot);
     if (payload === previousPayload) return;
 
@@ -159,6 +78,12 @@ const App = () => {
       );
     }, persistDebounceMs);
     onCleanup(() => clearTimeout(persistTimer));
+  });
+
+  onMount(() => {
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault();
+    window.addEventListener("contextmenu", preventContextMenu);
+    onCleanup(() => window.removeEventListener("contextmenu", preventContextMenu));
   });
 
   return (

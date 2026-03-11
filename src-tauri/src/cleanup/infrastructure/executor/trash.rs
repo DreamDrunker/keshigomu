@@ -1,10 +1,7 @@
 use std::fs;
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
-#[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
@@ -12,7 +9,6 @@ use anyhow::Context;
 use crate::cleanup::domain::error::CleanupError;
 use crate::cleanup::domain::types::CleanupResult;
 
-#[cfg(test)]
 fn safe_name(text: &str) -> String {
     text.chars()
         .map(|ch| {
@@ -25,7 +21,6 @@ fn safe_name(text: &str) -> String {
         .collect::<String>()
 }
 
-#[cfg(test)]
 fn resolve_existing_destination(base_dir: &Path, base_name: &str) -> PathBuf {
     let mut index = 0_u32;
     loop {
@@ -49,7 +44,6 @@ fn resolve_existing_destination(base_dir: &Path, base_name: &str) -> PathBuf {
     }
 }
 
-#[cfg(test)]
 fn copy_path_recursive(source: &Path, destination: &Path) -> CleanupResult<()> {
     let metadata = fs::symlink_metadata(source)
         .with_context(|| format!("read metadata for {}", source.display()))?;
@@ -73,7 +67,6 @@ fn copy_path_recursive(source: &Path, destination: &Path) -> CleanupResult<()> {
     Ok(())
 }
 
-#[cfg(test)]
 fn move_path_to_destination(source: &Path, destination: &Path) -> CleanupResult<()> {
     fs::rename(source, destination)
         .with_context(|| format!("move {} to {}", source.display(), destination.display()))
@@ -115,12 +108,7 @@ fn move_to_system_trash(_path: &Path) -> CleanupResult<()> {
     Err(CleanupError::SystemTrashUnsupported.into())
 }
 
-#[cfg(test)]
-pub(super) fn move_to_safe_trash(
-    path: &Path,
-    run_id: &str,
-    safe_trash_root: &Path,
-) -> CleanupResult<()> {
+fn move_to_managed_trash(path: &Path, run_id: &str, safe_trash_root: &Path) -> CleanupResult<()> {
     let trash_dir = safe_trash_root.join(run_id);
     fs::create_dir_all(&trash_dir)
         .with_context(|| format!("create managed trash directory {}", trash_dir.display()))?;
@@ -132,13 +120,22 @@ pub(super) fn move_to_safe_trash(
     move_path_to_destination(path, &destination)
 }
 
-#[cfg(not(test))]
 pub(super) fn move_to_safe_trash(
     path: &Path,
-    _run_id: &str,
-    _safe_trash_root: &Path,
+    run_id: &str,
+    safe_trash_root: &Path,
 ) -> CleanupResult<()> {
-    move_to_system_trash(path)
+    #[cfg(test)]
+    {
+        return move_to_managed_trash(path, run_id, safe_trash_root);
+    }
+    #[cfg(not(test))]
+    {
+        if move_to_system_trash(path).is_ok() {
+            return Ok(());
+        }
+        move_to_managed_trash(path, run_id, safe_trash_root)
+    }
 }
 
 pub(super) fn remove_path(path: &Path) -> CleanupResult<()> {

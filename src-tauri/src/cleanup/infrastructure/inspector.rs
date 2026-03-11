@@ -5,7 +5,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde_json::Value;
 
 use crate::cleanup::domain::types::{
-    CleanupRisk, DiscoveredProject, ProjectKind, ProjectStartupCommand,
+    CleanupRisk, DiscoveredProject, ProjectKind, ProjectStartupCommand, ProjectTechProfile,
 };
 
 mod facts;
@@ -228,9 +228,7 @@ pub struct PathHint {
 pub struct ProjectProfile {
     pub package_manager: String,
     pub package_managers: Vec<String>,
-    pub bundler: String,
-    pub framework: String,
-    pub runtime: String,
+    pub tech_profile: ProjectTechProfile,
     pub workspace_units: u32,
     pub startup_commands: Vec<ProjectStartupCommand>,
     pub reclaimable_bytes: u64,
@@ -250,8 +248,7 @@ struct StackSummary {
     package_manager: String,
     package_managers: Vec<String>,
     bundler: String,
-    framework: String,
-    runtime: String,
+    tech_profile: ProjectTechProfile,
 }
 
 #[derive(Default)]
@@ -283,9 +280,7 @@ fn inspect_project(project_path: &Path, project_kind: ProjectKind) -> ProjectPro
     ProjectProfile {
         package_manager: stack.package_manager,
         package_managers: stack.package_managers,
-        bundler: stack.bundler,
-        framework: stack.framework,
-        runtime: stack.runtime,
+        tech_profile: stack.tech_profile,
         workspace_units,
         startup_commands,
         reclaimable_bytes: metrics::estimate_reclaimable_bytes(&facts.project_path, &path_hints),
@@ -331,9 +326,7 @@ pub fn enrich_discovered_projects(
             DiscoveredProject {
                 package_manager: Some(profile.package_manager),
                 package_managers: Some(profile.package_managers),
-                bundler: Some(profile.bundler),
-                framework: Some(profile.framework),
-                runtime: Some(profile.runtime),
+                tech_profile: Some(profile.tech_profile),
                 workspace_units: profile.workspace_units,
                 startup_commands: profile.startup_commands,
                 reclaimable_bytes: Some(profile.reclaimable_bytes),
@@ -351,8 +344,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    const TEST_UNKNOWN: &str = "unknown";
 
     fn test_temp_dir(name: &str) -> PathBuf {
         let stamp = SystemTime::now()
@@ -375,9 +366,7 @@ mod tests {
             inactive_days: None,
             package_manager: None,
             package_managers: None,
-            bundler: None,
-            framework: None,
-            runtime: None,
+            tech_profile: None,
             workspace_units: 1,
             startup_commands: Vec::new(),
         }
@@ -403,9 +392,11 @@ mod tests {
             enriched[0].package_managers.clone().unwrap_or_default(),
             vec!["cargo".to_string()]
         );
-        assert_eq!(enriched[0].runtime.as_deref(), Some("rust"));
-        assert_eq!(enriched[0].bundler.as_deref(), Some(TEST_UNKNOWN));
-        assert_eq!(enriched[0].framework.as_deref(), Some(TEST_UNKNOWN));
+        let tech_profile = enriched[0].tech_profile.as_ref().expect("tech profile");
+        assert_eq!(tech_profile.languages, vec!["Rust".to_string()]);
+        assert!(tech_profile.frameworks.is_empty());
+        assert!(tech_profile.build_tools.is_empty());
+        assert_eq!(tech_profile.command_runner.as_deref(), Some("cargo"));
         assert_eq!(enriched[0].workspace_units, 1);
         assert_eq!(
             enriched[0]
@@ -438,6 +429,9 @@ mod tests {
   "dependencies": {
     "vite": "^6.0.0",
     "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
   }
 }"#,
         );
@@ -465,8 +459,17 @@ mod tests {
 
         assert_eq!(enriched.len(), 1);
         assert_eq!(enriched[0].package_manager.as_deref(), Some("bun"));
-        assert_eq!(enriched[0].bundler.as_deref(), Some("vite"));
-        assert_eq!(enriched[0].framework.as_deref(), Some("solid"));
+        let tech_profile = enriched[0].tech_profile.as_ref().expect("tech profile");
+        assert_eq!(
+            tech_profile.languages,
+            vec!["TypeScript".to_string(), "Rust".to_string()]
+        );
+        assert_eq!(
+            tech_profile.frameworks,
+            vec!["Solid".to_string(), "Tauri".to_string()]
+        );
+        assert_eq!(tech_profile.build_tools, vec!["Vite".to_string()]);
+        assert_eq!(tech_profile.command_runner.as_deref(), Some("Bun"));
         assert_eq!(enriched[0].workspace_units, 2);
         assert_eq!(
             enriched[0]
@@ -480,6 +483,20 @@ mod tests {
                 "bun run dev",
                 "bun run build",
                 "bun run preview",
+            ]
+        );
+        assert_eq!(
+            enriched[0]
+                .startup_commands
+                .iter()
+                .map(|command| command.resolved_command.as_deref().unwrap_or(""))
+                .collect::<Vec<_>>(),
+            vec![
+                "tauri dev",
+                "tauri build",
+                "vite",
+                "vite build",
+                "vite preview"
             ]
         );
     }

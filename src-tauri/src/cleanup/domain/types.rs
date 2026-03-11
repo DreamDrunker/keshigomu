@@ -67,6 +67,23 @@ pub struct ScanProjectsRequest {
 pub struct ProjectStartupCommand {
     pub label: String,
     pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTechProfile {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frameworks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub build_tools: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_runner: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,11 +102,7 @@ pub struct DiscoveredProject {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package_managers: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bundler: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub framework: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub runtime: Option<String>,
+    pub tech_profile: Option<ProjectTechProfile>,
     #[serde(default = "default_workspace_units")]
     pub workspace_units: u32,
     #[serde(default)]

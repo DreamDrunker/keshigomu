@@ -13,6 +13,10 @@ vite.config.d.mts
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# Test outputs
+coverage/
+test-results/
+
 # Editor
 .idea/
 .vscode/*

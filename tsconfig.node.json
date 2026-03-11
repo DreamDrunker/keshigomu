@@ -4,6 +4,10 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["src/*"]
+    },
     "allowJs": true,
     "outDir": "./.tsbuild/node",
     "allowSyntheticDefaultImports": true

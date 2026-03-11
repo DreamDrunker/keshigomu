@@ -15,6 +15,7 @@ fn build_plan_for_project(
     project_kind: ProjectKind,
 ) -> ProjectCleanupPlan {
     let base_path = fs::canonicalize(project_path).unwrap_or_else(|_| project_path.to_path_buf());
+    let is_within_project_root = |path: &Path| path == base_path || path.starts_with(&base_path);
     let profile =
         inspector::profile_for_project(inspector_runtime, &project_id).unwrap_or_else(|| {
             inspector::inspect_and_cache(inspector_runtime, &project_id, &base_path, project_kind)
@@ -27,8 +28,10 @@ fn build_plan_for_project(
             if !candidate_path.exists() {
                 return None;
             }
-            let normalized_candidate_path =
-                fs::canonicalize(&candidate_path).unwrap_or_else(|_| candidate_path.clone());
+            let normalized_candidate_path = fs::canonicalize(&candidate_path).ok()?;
+            if !is_within_project_root(&normalized_candidate_path) {
+                return None;
+            }
             Some(CleanupPlanItem {
                 item_id: format!("{project_id}:{}", hint.key),
                 label: hint.label.clone(),

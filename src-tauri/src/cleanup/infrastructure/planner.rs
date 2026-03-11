@@ -26,6 +26,8 @@ mod tests {
     use super::PlannerRuntime;
     use crate::cleanup::domain::types::{BuildCleanupPlanRequest, DiscoveredProject, ProjectKind};
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -100,9 +102,7 @@ mod tests {
             inactive_days: None,
             package_manager: None,
             package_managers: None,
-            bundler: None,
-            framework: None,
-            runtime: None,
+            tech_profile: None,
             workspace_units: 1,
             startup_commands: Vec::new(),
         }]);
@@ -237,6 +237,40 @@ mod tests {
             .items
             .iter()
             .any(|item| item.path.contains("/.idea/") || item.path.ends_with("/.idea")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn build_plan_excludes_paths_that_escape_project_root_via_symlink() {
+        let planner = PlannerRuntime::default();
+        let inspector_runtime =
+            crate::cleanup::infrastructure::inspector::InspectionRuntime::default();
+        let project_dir = test_temp_dir("plan-symlink-outside-root");
+        let external_dir = test_temp_dir("plan-symlink-target");
+        let _ = fs::create_dir_all(&project_dir);
+        let _ = fs::create_dir_all(&external_dir);
+        let _ = fs::write(project_dir.join("package.json"), r#"{"name":"demo"}"#);
+        let _ = fs::write(external_dir.join("payload.js"), vec![1_u8; 16]);
+        let _ = symlink(&external_dir, project_dir.join("dist"));
+
+        let output = planner.build_cleanup_plans_with_allowed_roots(
+            &inspector_runtime,
+            BuildCleanupPlanRequest {
+                project_ids: vec![project_dir.to_string_lossy().to_string()],
+            },
+            &[],
+        );
+
+        let normalized_project_path = fs::canonicalize(&project_dir).unwrap_or(project_dir.clone());
+        let _ = fs::remove_dir_all(&project_dir);
+        let _ = fs::remove_dir_all(&external_dir);
+
+        assert_eq!(output.missing_project_ids.len(), 0);
+        assert_eq!(output.plans.len(), 1);
+        assert!(output.plans[0].items.iter().all(|item| {
+            let item_path = PathBuf::from(&item.path);
+            item_path.starts_with(&normalized_project_path)
+        }));
     }
 
     #[test]

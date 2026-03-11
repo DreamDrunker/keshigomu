@@ -1,7 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::AppHandle;
+use tauri::Manager;
 
 use super::{inspector, planner};
 use crate::cleanup::domain::types::{ExecuteCleanupProjectResult, ExecuteCleanupRequest};
@@ -20,6 +21,14 @@ fn run_id() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| format!("run-{}", duration.as_millis()))
         .unwrap_or_else(|_| "run-0".to_string())
+}
+
+fn resolve_safe_trash_root(app: &AppHandle) -> PathBuf {
+    app.path()
+        .app_cache_dir()
+        .or_else(|_| app.path().app_config_dir())
+        .map(|base| base.join("cleanup-safe-trash"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("keshigomu-cleanup-safe-trash"))
 }
 
 fn execute_cleanup_request(
@@ -56,12 +65,18 @@ fn execute_cleanup_request(
 }
 
 pub fn execute_cleanup(
-    _app: &AppHandle,
+    app: &AppHandle,
     planner_runtime: &planner::PlannerRuntime,
     inspector_runtime: &inspector::InspectionRuntime,
     request: ExecuteCleanupRequest,
 ) -> ExecuteOutput {
-    execute_cleanup_request(request, Path::new(""), planner_runtime, inspector_runtime)
+    let safe_trash_root = resolve_safe_trash_root(app);
+    execute_cleanup_request(
+        request,
+        &safe_trash_root,
+        planner_runtime,
+        inspector_runtime,
+    )
 }
 
 #[cfg(test)]

@@ -51,15 +51,15 @@ const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number) =>
   });
 const resolveScanErrorMessage = (error: unknown) =>
   error instanceof Error && error.message.toLowerCase().includes("timeout")
-    ? "扫描超时，请检查扫描根目录（尤其外接磁盘或网络盘）"
-    : "扫描失败，请稍后重试";
+    ? "扫描时间较长，请检查扫描目录，尤其是外接磁盘或网络盘"
+    : "扫描没有完成，请稍后重试";
 
-type UseScanRootsOptions = {
+export type UseScanRootsOptions = {
   initialRoots: ScanRoot[];
   defaultDepth?: number;
 };
 
-type UseScanRootsValue = {
+export type UseScanRootsValue = {
   scanRoots: Accessor<ScanRoot[]>;
   replaceScanRoots: (roots: ScanRoot[]) => void;
   autoScanProjects: () => Promise<void>;
@@ -72,7 +72,7 @@ type UseScanRootsValue = {
   scanStatusText: Accessor<string>;
 };
 
-const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue => {
+export const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue => {
   const defaultDepth = options.defaultDepth ?? 3;
   const [scanRoots, setScanRoots] = createSignal(normalizeScanRoots(options.initialRoots));
   const [lastScanProjects, setLastScanProjects] = createSignal<DiscoveredProject[]>([]);
@@ -88,14 +88,14 @@ const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue =
       setLastScanProjects([]);
       setLastScanWarnings([]);
       setLastScanAt("");
-      setScanStatusText("请先添加根目录");
+      setScanStatusText("先添加一个扫描目录");
       return;
     }
 
     if (scanInProgress()) return;
     setScanInProgress(true);
     !sameScanRoots(scanRoots(), normalizedRoots) && setScanRoots(normalizedRoots);
-    setScanStatusText("正在自动发现项目...");
+    setScanStatusText("正在扫描项目...");
     try {
       const response = await withTimeout(
         scanProjects({
@@ -115,8 +115,8 @@ const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue =
       setLastScanAt(new Date().toISOString());
       setScanStatusText(
         response.warnings.length
-          ? `扫描完成：发现 ${response.projects.length} 个项目，${response.warnings.length} 条告警`
-          : `扫描完成：发现 ${response.projects.length} 个项目`,
+          ? `已找到 ${response.projects.length} 个项目，另有 ${response.warnings.length} 条提示`
+          : `已找到 ${response.projects.length} 个项目`,
       );
       response.warnings.length &&
         console.warn("[scan_projects] warnings", response.warnings);
@@ -126,7 +126,7 @@ const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue =
       const errorMessage = resolveScanErrorMessage(error);
       setLastScanWarnings([errorMessage]);
       setLastScanAt(new Date().toISOString());
-      setScanStatusText(errorMessage.includes("超时") ? "扫描超时" : "扫描失败");
+      setScanStatusText(errorMessage.includes("时间较长") ? "扫描时间较长" : "扫描失败");
     } finally {
       setScanInProgress(false);
     }
@@ -174,6 +174,10 @@ const createScanRootsState = (options: UseScanRootsOptions): UseScanRootsValue =
 };
 
 let scanRootsState: UseScanRootsValue | null = null;
+
+export const resetScanRootsState = () => {
+  scanRootsState = null;
+};
 
 export const useScanRoots = () =>
   scanRootsState ?? (

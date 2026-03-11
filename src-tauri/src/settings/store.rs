@@ -148,3 +148,116 @@ pub fn reset_settings_section(app: &AppHandle, section: String) -> SettingsResul
     write_settings(app, &current_settings)?;
     Ok(current_settings)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{merge_json, normalize_settings};
+    use crate::cleanup::domain::types::CleanupRisk;
+    use crate::settings::types::{
+        AppSettings, CleanupProjectPolicyOverride, ScanRoot,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn normalize_settings_clamps_thresholds_and_dedupes_scan_roots() {
+        let mut settings = AppSettings::default();
+        settings.version = 9;
+        settings.cleanup.global_policy.cleanup_threshold_days = 0;
+        settings.cleanup.auto_plan.interval_days = 0;
+        settings.cleanup.project_policies.insert(
+            "project-a".to_string(),
+            CleanupProjectPolicyOverride {
+                enabled: true,
+                safe_mode: false,
+                auto_cleanup_enabled: false,
+                inactive_threshold_days: 0,
+                cache_mtime_days: 0,
+            },
+        );
+        settings.scan.roots = vec![
+            ScanRoot {
+                path: String::new(),
+                depth: 0,
+            },
+            ScanRoot {
+                path: "/tmp/code".to_string(),
+                depth: 0,
+            },
+            ScanRoot {
+                path: "/tmp/code".to_string(),
+                depth: 9,
+            },
+            ScanRoot {
+                path: "/tmp/work".to_string(),
+                depth: 2,
+            },
+        ];
+
+        normalize_settings(&mut settings);
+
+        assert_eq!(settings.version, 1);
+        assert_eq!(settings.cleanup.global_policy.cleanup_threshold_days, 1);
+        assert_eq!(settings.cleanup.auto_plan.interval_days, 1);
+        assert_eq!(
+            settings.cleanup.project_policies["project-a"].inactive_threshold_days,
+            1
+        );
+        assert_eq!(
+            settings.cleanup.project_policies["project-a"].cache_mtime_days,
+            1
+        );
+        assert_eq!(
+            settings
+                .scan
+                .roots
+                .iter()
+                .map(|root| (root.path.as_str(), root.depth))
+                .collect::<Vec<_>>(),
+            vec![("/tmp/code", 1), ("/tmp/work", 2)]
+        );
+    }
+
+    #[test]
+    fn merge_json_merges_nested_objects_and_preserves_existing_keys() {
+        let mut target = json!({
+            "cleanup": {
+                "autoPlan": {
+                    "enabled": true,
+                    "intervalDays": 30
+                },
+                "globalPolicy": {
+                    "safeMode": true,
+                    "riskProfile": {
+                        "cache": "low",
+                        "build": "low"
+                    }
+                }
+            }
+        });
+        let patch = json!({
+            "cleanup": {
+                "autoPlan": {
+                    "enabled": false
+                },
+                "globalPolicy": {
+                    "riskProfile": {
+                        "build": "medium"
+                    }
+                }
+            }
+        });
+
+        merge_json(&mut target, &patch);
+
+        assert_eq!(target["cleanup"]["autoPlan"]["enabled"], json!(false));
+        assert_eq!(target["cleanup"]["autoPlan"]["intervalDays"], json!(30));
+        assert_eq!(
+            target["cleanup"]["globalPolicy"]["riskProfile"]["cache"],
+            json!(CleanupRisk::Low)
+        );
+        assert_eq!(
+            target["cleanup"]["globalPolicy"]["riskProfile"]["build"],
+            json!(CleanupRisk::Medium)
+        );
+    }
+}

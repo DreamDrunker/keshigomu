@@ -16,7 +16,7 @@ import type {
 
 export const navItems: NavItem[] = [
   { key: "manage", label: "项目概览", icon: Folder },
-  { key: "cleanup", label: "清理配置", icon: Trash2 },
+  { key: "cleanup", label: "清理", icon: Trash2 },
 ];
 
 export const monorepoModeOptions: Array<{ value: MonorepoMode; label: string }> = [
@@ -26,29 +26,29 @@ export const monorepoModeOptions: Array<{ value: MonorepoMode; label: string }> 
 ];
 
 export const themeOptions: Array<{ key: ThemeKey; label: string; description: string }> = [
-  { key: "system", label: "跟随系统", description: "系统浅色即浅色，系统深色即深色" },
-  { key: "white", label: "纯白", description: "明亮简洁，适合白天使用" },
-  { key: "black", label: "纯黑", description: "深色沉浸，减少视觉干扰" },
-  { key: "current", label: "暖砂", description: "柔和暖调，低饱和的米色界面" },
-  { key: "lavender", label: "薰衣草", description: "轻紫冷调，层次更柔和" },
-  { key: "custom", label: "自定义", description: "按你的偏好自由配色" },
+  { key: "system", label: "跟随系统", description: "跟随系统的浅色或深色模式" },
+  { key: "white", label: "纯白", description: "明亮干净，适合白天使用" },
+  { key: "black", label: "纯黑", description: "更沉静，适合长时间查看" },
+  { key: "current", label: "暖砂", description: "柔和暖色，层次更轻一些" },
+  { key: "lavender", label: "薰衣草", description: "偏冷的浅色界面，观感更柔和" },
+  { key: "custom", label: "自定义", description: "按自己的习惯调整颜色和细节" },
 ];
 
 export const settingsTabs: SettingsTabItem[] = [
   {
     key: "appearance",
     label: "外观",
-    description: "主题与界面样式",
+    description: "主题、颜色和界面细节",
   },
   {
     key: "scan",
     label: "扫描",
-    description: "项目发现与展示策略",
+    description: "管理扫描目录和项目显示",
   },
   {
     key: "cleanup",
     label: "清理",
-    description: "全局清理阈值与执行频率",
+    description: "设置默认清理方式和自动清理",
   },
 ];
 
@@ -78,12 +78,12 @@ export const defaultCleanupRiskProfile: CleanupRiskProfile = {
 };
 
 export const cleanupRiskProfileFieldLabels: Record<CleanupRiskProfileKey, string> = {
-  cache: "缓存目录（例如 .cache / .turbo / .next/cache）",
-  build: "构建产物目录（例如 dist / build / out / .next）",
-  report: "测试覆盖率目录（coverage）",
-  temp: "临时目录（tmp / temp）",
-  dependencies: "依赖安装目录（node_modules）",
-  rustTarget: "Rust 编译目录（target）",
+  cache: "缓存目录（如 .cache、.turbo、.next/cache）",
+  build: "构建目录（如 dist、build、out、.next）",
+  report: "覆盖率目录（coverage）",
+  temp: "临时目录（tmp、temp）",
+  dependencies: "依赖目录（node_modules）",
+  rustTarget: "Rust 构建目录（target）",
 };
 
 export const cleanupRiskProfileFields: CleanupRiskProfileKey[] = [
@@ -194,19 +194,23 @@ export const projectSnapshots: ProjectSnapshot[] = [
     id: "northstar",
     name: "northstar-console",
     path: "~/Code/northstar-console",
-    packageManagers: ["pnpm"],
+    packageManagers: ["bun", "cargo"],
     reclaimableGb: 4.2,
     inactiveDays: 3,
     kind: "repo-root",
     profile: "前端 Monorepo",
-    stack: "Solid + TypeScript + Tauri",
-    runtime: "Node 20 / pnpm 9 / Rust stable",
+    technology: {
+      languages: ["TypeScript", "Rust"],
+      frameworks: ["Solid", "Tauri"],
+      buildTools: ["Vite"],
+      commandRunner: "Bun",
+    },
     workspaceRole: "仓库根目录",
     workspaceUnits: 6,
     startupCommands: [
-      { label: "前端开发", command: "pnpm dev" },
-      { label: "桌面调试", command: "bun tauri dev" },
-      { label: "构建产物", command: "pnpm build && bun tauri build" },
+      { label: "前端开发", command: "bun run dev" },
+      { label: "桌面调试", command: "bun run tauri dev" },
+      { label: "构建产物", command: "bun run build && bun run tauri build" },
     ],
   },
   {
@@ -218,8 +222,12 @@ export const projectSnapshots: ProjectSnapshot[] = [
     inactiveDays: 12,
     kind: "package",
     profile: "前端工作区子包",
-    stack: "React + TypeScript + Vite",
-    runtime: "Bun 1.2 / Vite 6",
+    technology: {
+      languages: ["TypeScript"],
+      frameworks: ["React"],
+      buildTools: ["Vite"],
+      commandRunner: "Bun",
+    },
     workspaceRole: "monorepo 子包",
     workspaceUnits: 1,
     startupCommands: [
@@ -236,8 +244,12 @@ export const projectSnapshots: ProjectSnapshot[] = [
     inactiveDays: 24,
     kind: "package",
     profile: "服务端子包",
-    stack: "TypeScript + Node",
-    runtime: "Node 20 / pnpm 9",
+    technology: {
+      languages: ["TypeScript"],
+      frameworks: [],
+      buildTools: [],
+      commandRunner: "pnpm",
+    },
     workspaceRole: "monorepo 子包",
     workspaceUnits: 1,
     startupCommands: [
@@ -255,8 +267,12 @@ export const projectSnapshots: ProjectSnapshot[] = [
     inactiveDays: 56,
     kind: "single",
     profile: "独立前端项目",
-    stack: "Solid + TypeScript",
-    runtime: "npm 10 / Node 20",
+    technology: {
+      languages: ["TypeScript"],
+      frameworks: ["Solid"],
+      buildTools: ["Vite"],
+      commandRunner: "npm",
+    },
     workspaceRole: "单项目",
     workspaceUnits: 1,
     startupCommands: [

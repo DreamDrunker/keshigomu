@@ -44,7 +44,7 @@ const subscribeMediaQuery = (
   return () => legacyMediaQuery.removeListener?.(listener);
 };
 
-type ApperanceState = {
+export type ApperanceState = {
   activeTheme: Accessor<ThemeKey>;
   setActiveTheme: Setter<ThemeKey>;
   customTheme: Accessor<ThemeVars>;
@@ -59,7 +59,7 @@ type ApperanceState = {
   clearCustomCss: () => void;
 };
 
-const createApperanceState = (): ApperanceState => {
+export const createApperanceState = (): ApperanceState => {
   const [activeTheme, setActiveTheme] = createSignal<ThemeKey>("system");
   const [systemThemePreset, setSystemThemePreset] = createSignal<ThemePresetKey>(
     resolveSystemThemePreset(),
@@ -155,6 +155,10 @@ const createApperanceState = (): ApperanceState => {
 };
 
 let apperanceState: ApperanceState | null = null;
+
+export const resetApperanceState = () => {
+  apperanceState = null;
+};
 
 export const useApperance = () =>
   apperanceState ?? (apperanceState = createRoot(() => createApperanceState()));

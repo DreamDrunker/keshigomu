@@ -19,12 +19,35 @@ use crate::cleanup::infrastructure::paths;
 use crate::cleanup::infrastructure::scanner;
 use crate::cleanup::CleanupState;
 use crate::settings;
+use crate::settings::types::{AppSettings, CleanupRiskProfile};
 
 const SCAN_PROJECTS_MESSAGE: &str = "scan projects implemented";
 const BUILD_CLEANUP_PLAN_MESSAGE: &str = "build cleanup plan implemented";
 const EXECUTE_CLEANUP_MESSAGE: &str = "execute cleanup implemented";
 const RUN_AUTO_CLEANUP_MESSAGE: &str = "auto cleanup implemented";
 const LIST_CLEANUP_HISTORY_MESSAGE: &str = "list cleanup history implemented";
+
+fn resolve_allowed_scan_roots(settings: &AppSettings) -> CleanupResult<Vec<PathBuf>> {
+    let roots = settings
+        .scan
+        .roots
+        .iter()
+        .map(|root| paths::resolve_path_from_user_input(&root.path))
+        .map(|root| paths::canonicalize_or_path(&root))
+        .collect::<Vec<_>>();
+    if roots.is_empty() {
+        return Err(CleanupError::ScanRootsEmpty.into());
+    }
+    Ok(roots)
+}
+
+fn project_override_enabled(settings: &AppSettings, project_id: &str) -> bool {
+    settings
+        .cleanup
+        .project_policies
+        .get(project_id)
+        .is_some_and(|policy| policy.enabled)
+}
 
 pub struct CleanupApplication<'a> {
     app: &'a AppHandle,
@@ -162,17 +185,7 @@ impl<'a> CleanupApplication<'a> {
     fn allowed_scan_roots(&self) -> CleanupResult<Vec<PathBuf>> {
         let settings =
             settings::store::load_settings(self.app).context("load settings for scan roots")?;
-        let roots = settings
-            .scan
-            .roots
-            .iter()
-            .map(|root| paths::resolve_path_from_user_input(&root.path))
-            .map(|root| paths::canonicalize_or_path(&root))
-            .collect::<Vec<_>>();
-        if roots.is_empty() {
-            return Err(CleanupError::ScanRootsEmpty.into());
-        }
-        Ok(roots)
+        resolve_allowed_scan_roots(&settings)
     }
 
     fn resolve_execution_entries(
@@ -181,14 +194,64 @@ impl<'a> CleanupApplication<'a> {
     ) -> CleanupResult<Vec<CleanupExecutionEntry>> {
         let settings =
             settings::store::load_settings(self.app).context("load settings for execution")?;
+        let needs_global_selection = entries
+            .iter()
+            .any(|entry| !project_override_enabled(&settings, &entry.project_id));
+        let allowed_roots = needs_global_selection
+            .then(|| resolve_allowed_scan_roots(&settings))
+            .transpose()?;
+        let risk_profile = settings.cleanup.global_policy.risk_profile.clone();
         Ok(entries
             .into_iter()
-            .map(|entry| CleanupExecutionEntry {
-                safe_mode: Some(entry.safe_mode.unwrap_or_else(|| {
-                    policy::resolve_effective_project_policy(&settings, &entry.project_id).safe_mode
-                })),
-                ..entry
+            .filter_map(|entry| {
+                let effective_policy =
+                    policy::resolve_effective_project_policy(&settings, &entry.project_id);
+                let selected_item_ids = if project_override_enabled(&settings, &entry.project_id) {
+                    entry.selected_item_ids
+                } else {
+                    self.resolve_low_risk_manual_item_ids(
+                        &entry.project_id,
+                        allowed_roots.as_deref().unwrap_or(&[]),
+                        &risk_profile,
+                    )
+                };
+                (!selected_item_ids.is_empty()).then_some(CleanupExecutionEntry {
+                    project_id: entry.project_id,
+                    selected_item_ids,
+                    safe_mode: Some(entry.safe_mode.unwrap_or(effective_policy.safe_mode)),
+                })
             })
             .collect::<Vec<_>>())
+    }
+
+    fn resolve_low_risk_manual_item_ids(
+        &self,
+        project_id: &str,
+        allowed_roots: &[PathBuf],
+        risk_profile: &CleanupRiskProfile,
+    ) -> Vec<String> {
+        self.state
+            .planner
+            .build_cleanup_plans_with_allowed_roots(
+                &self.state.inspector,
+                BuildCleanupPlanRequest {
+                    project_ids: vec![project_id.to_string()],
+                },
+                allowed_roots,
+            )
+            .plans
+            .into_iter()
+            .find(|plan| plan.project_id == project_id)
+            .into_iter()
+            .flat_map(|plan| plan.items.into_iter())
+            .filter(|item| {
+                policy::cleanup_item_is_low_risk(
+                    item.category.as_deref(),
+                    &item.path,
+                    risk_profile,
+                )
+            })
+            .map(|item| item.item_id)
+            .collect::<Vec<_>>()
     }
 }

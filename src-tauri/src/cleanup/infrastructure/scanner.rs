@@ -150,9 +150,7 @@ fn detect_project(path: &Path) -> Option<DiscoveredProject> {
         inactive_days: None,
         package_manager: None,
         package_managers: None,
-        bundler: None,
-        framework: None,
-        runtime: None,
+        tech_profile: None,
         workspace_units: 1,
         startup_commands: Vec::new(),
     })

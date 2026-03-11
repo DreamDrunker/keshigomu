@@ -14,6 +14,13 @@ export type ScanProjectsRequest = {
   roots: ScanRootInput[];
 };
 
+export type ProjectTechProfile = {
+  languages?: string[];
+  frameworks?: string[];
+  buildTools?: string[];
+  commandRunner?: string | null;
+};
+
 export type DiscoveredProject = {
   id: string;
   path: string;
@@ -23,13 +30,13 @@ export type DiscoveredProject = {
   inactiveDays?: number;
   packageManager?: string;
   packageManagers?: string[];
-  bundler?: string;
-  framework?: string;
-  runtime?: string;
+  techProfile?: ProjectTechProfile;
   workspaceUnits: number;
   startupCommands: Array<{
     label: string;
     command: string;
+    scriptName?: string;
+    resolvedCommand?: string;
   }>;
 };
 

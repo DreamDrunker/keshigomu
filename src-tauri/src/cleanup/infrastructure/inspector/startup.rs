@@ -19,11 +19,15 @@ pub(super) fn infer_startup_commands(
                 &mut commands,
                 "桌面调试",
                 package_script_command(package_manager, "tauri", &["dev"]),
+                Some("tauri"),
+                resolved_script_command(scripts, "tauri", &["dev"]),
             );
             push_startup_command(
                 &mut commands,
                 "桌面构建",
                 package_script_command(package_manager, "tauri", &["build"]),
+                Some("tauri"),
+                resolved_script_command(scripts, "tauri", &["build"]),
             );
         });
 
@@ -35,6 +39,8 @@ pub(super) fn infer_startup_commands(
                 &mut commands,
                 "本地开发",
                 package_script_command(package_manager, script_name, &[]),
+                Some(script_name),
+                resolved_script_command(scripts, script_name, &[]),
             )
         });
 
@@ -51,6 +57,8 @@ pub(super) fn infer_startup_commands(
                     &mut commands,
                     "启动",
                     package_script_command(package_manager, script_name, &[]),
+                    Some(script_name),
+                    resolved_script_command(scripts, script_name, &[]),
                 )
             });
 
@@ -63,6 +71,8 @@ pub(super) fn infer_startup_commands(
                 &mut commands,
                 "构建",
                 package_script_command(package_manager, script_name, &[]),
+                Some(script_name),
+                resolved_script_command(scripts, script_name, &[]),
             )
         });
 
@@ -75,14 +85,17 @@ pub(super) fn infer_startup_commands(
                 &mut commands,
                 "预览",
                 package_script_command(package_manager, script_name, &[]),
+                Some(script_name),
+                resolved_script_command(scripts, script_name, &[]),
             )
         });
     }
 
     if commands.is_empty() && facts.project_path.join("Cargo.toml").is_file() {
-        has_runnable_cargo_target(facts)
-            .then(|| push_startup_command(&mut commands, "运行", "cargo run".to_string()));
-        push_startup_command(&mut commands, "构建", "cargo build".to_string());
+        has_runnable_cargo_target(facts).then(|| {
+            push_startup_command(&mut commands, "运行", "cargo run".to_string(), None, None)
+        });
+        push_startup_command(&mut commands, "构建", "cargo build".to_string(), None, None);
     }
 
     commands.truncate(STARTUP_COMMAND_LIMIT);
@@ -118,6 +131,22 @@ fn package_script_command(package_manager: &str, script: &str, args: &[&str]) ->
     }
 }
 
+fn append_script_arguments(script: &str, args: &[&str]) -> String {
+    args.is_empty()
+        .then_some(script.to_string())
+        .unwrap_or_else(|| format!("{script} {}", args.join(" ")))
+}
+
+fn resolved_script_command(
+    scripts: &HashMap<String, String>,
+    script_name: &str,
+    args: &[&str],
+) -> Option<String> {
+    scripts
+        .get(script_name)
+        .map(|script| append_script_arguments(script, args))
+}
+
 fn has_same_script_body(
     scripts: &HashMap<String, String>,
     candidate_name: &str,
@@ -145,13 +174,21 @@ fn find_script_name(
         })
 }
 
-fn push_startup_command(commands: &mut Vec<ProjectStartupCommand>, label: &str, command: String) {
+fn push_startup_command(
+    commands: &mut Vec<ProjectStartupCommand>,
+    label: &str,
+    command: String,
+    script_name: Option<&str>,
+    resolved_command: Option<String>,
+) {
     if commands.iter().any(|existing| existing.command == command) {
         return;
     }
     commands.push(ProjectStartupCommand {
         label: label.to_string(),
         command,
+        script_name: script_name.map(ToString::to_string),
+        resolved_command: resolved_command.filter(|value| !value.trim().is_empty()),
     });
 }
 

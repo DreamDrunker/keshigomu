@@ -120,8 +120,10 @@ const sanitizeSelectedIds = (ids: string[], validIds: Set<string>) =>
   dedupeIds(ids.filter((id) => validIds.has(id)));
 const sameIdList = (left: string[], right: string[]) =>
   left.length === right.length && left.every((id, index) => id === right[index]);
+const lowRiskPlanIds = (planItems: PlanItem[]) =>
+  planItems.filter((item) => item.risk === "low").map((item) => item.id);
 
-type CleanupState = {
+export type CleanupState = {
   safeMode: Accessor<boolean>;
   setSafeMode: Setter<boolean>;
   cleanupThresholdDays: Accessor<number>;
@@ -163,7 +165,7 @@ type CleanupState = {
   }>;
 };
 
-const createCleanupState = (): CleanupState => {
+export const createCleanupState = (): CleanupState => {
   const [safeMode, setSafeMode] = createSignal(true);
   const [cleanupThresholdDays, setCleanupThresholdDays] = createSignal(30);
   const [autoCleanupEnabled, setAutoCleanupEnabled] = createSignal(true);
@@ -252,17 +254,29 @@ const createCleanupState = (): CleanupState => {
 
   const planErrorForProject = (projectId: string) => projectPlanError()[projectId] ?? "";
 
+  const planSelectionStateForProject = (projectId: string, planItems = planForProject(projectId)) => {
+    const validPlanIds = new Set(planItems.map((item) => item.id));
+    const lowRiskSelection = lowRiskPlanIds(planItems);
+    const savedSelection = projectPlanSelections()[projectId];
+    return {
+      editable: Boolean(projectPolicyOverrides()[projectId]?.enabled),
+      savedSelection,
+      editableSelection: savedSelection
+        ? sanitizeSelectedIds(savedSelection, validPlanIds)
+        : lowRiskSelection,
+      lowRiskSelection,
+    };
+  };
+
   const applyLoadedPlan = (projectId: string, planItems: PlanItem[]) => {
     setProjectPlans((currentMap) => ({ ...currentMap, [projectId]: planItems }));
-    const validPlanIds = new Set(planItems.map((item) => item.id));
-    const recommendedIds = planItems
-      .filter((item) => item.recommended)
-      .map((item) => item.id);
-    const currentSelection = projectPlanSelections()[projectId];
-    const nextSelection = currentSelection
-      ? sanitizeSelectedIds(currentSelection, validPlanIds)
-      : recommendedIds;
-    const selectionUnchanged = currentSelection && sameIdList(currentSelection, nextSelection);
+    const {
+      editable,
+      savedSelection,
+      editableSelection,
+      lowRiskSelection,
+    } = planSelectionStateForProject(projectId, planItems);
+    const nextSelection = editable ? editableSelection : lowRiskSelection;
     setCleanupQueue((entries) =>
       entries.map((entry) =>
         entry.projectId === projectId &&
@@ -271,10 +285,12 @@ const createCleanupState = (): CleanupState => {
           : entry,
       ),
     );
-    if (selectionUnchanged) {
-      return;
-    }
-    setProjectPlanSelections((currentMap) => ({ ...currentMap, [projectId]: [...nextSelection] }));
+    savedSelection &&
+      !sameIdList(savedSelection, editableSelection) &&
+      setProjectPlanSelections((currentMap) => ({
+        ...currentMap,
+        [projectId]: [...editableSelection],
+      }));
   };
 
   const refreshPlanForProject = async (projectId: string, projectPath = "") => {
@@ -312,13 +328,8 @@ const createCleanupState = (): CleanupState => {
     cleanupQueue().find((entry) => entry.projectId === projectId);
 
   const selectedPlanIdsForProject = (projectId: string) => {
-    const planIds = new Set(planForProject(projectId).map((item) => item.id));
-    const savedSelection = projectPlanSelections()[projectId];
-    return savedSelection
-      ? sanitizeSelectedIds(savedSelection, planIds)
-      : planForProject(projectId)
-        .filter((item) => item.recommended)
-        .map((item) => item.id);
+    const { editable, editableSelection, lowRiskSelection } = planSelectionStateForProject(projectId);
+    return editable ? editableSelection : lowRiskSelection;
   };
 
   const createQueueEntry = (projectId: string): CleanupQueueEntry => ({
@@ -364,6 +375,7 @@ const createCleanupState = (): CleanupState => {
   };
 
   const togglePlanItem = (projectId: string, itemId: string) => {
+    if (!projectPolicyOverrides()[projectId]?.enabled) return;
     const currentSelection = selectedPlanIdsForProject(projectId);
     const nextSelection = currentSelection.includes(itemId)
       ? currentSelection.filter((id) => id !== itemId)
@@ -378,7 +390,7 @@ const createCleanupState = (): CleanupState => {
 
   const queueProjectStats = (projectId: string): QueueProjectStats => {
     const plan = planForProject(projectId);
-    const selectedIds = queueEntryForProject(projectId)?.selectedPlanIds ?? [];
+    const selectedIds = selectedPlanIdsForProject(projectId);
     const selectedItems = plan.filter((item) => selectedIds.includes(item.id));
     return {
       selectedCount: selectedItems.length,
@@ -479,5 +491,9 @@ const createCleanupState = (): CleanupState => {
 };
 
 let cleanupState: CleanupState | null = null;
+
+export const resetCleanupState = () => {
+  cleanupState = null;
+};
 
 export const useCleanup = () => cleanupState ?? (cleanupState = createRoot(() => createCleanupState()));

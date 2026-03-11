@@ -1,10 +1,11 @@
 import { createEffect, createMemo, createRoot, createSignal, type Accessor, type Setter } from "solid-js";
+import type { DiscoveredProject, ProjectTechProfile } from "~/services/cleanupClient";
 import { useScanRoots } from "~/hooks/useScanRoots";
 import type { MonorepoMode, ProjectSnapshot } from "~/workspace/types";
 
 const bytesToGb = (bytes: number) => bytes / 1024 / 1024 / 1024;
 
-type ProjectState = {
+export type ProjectState = {
   allProjects: Accessor<ProjectSnapshot[]>;
   selectedProjectId: Accessor<string>;
   setSelectedProjectId: Setter<string>;
@@ -45,10 +46,24 @@ const hasFrontendPackageManager = (project: ProjectSnapshot) =>
       packageManager === "pnpm" || packageManager === "bun" || packageManager === "npm",
   );
 
+const uniqueLabels = (values: string[]) =>
+  values.filter((value, index, allValues) => value && allValues.indexOf(value) === index);
+
+const normalizeTechnology = (
+  techProfile: ProjectTechProfile | undefined,
+): ProjectSnapshot["technology"] => ({
+  languages: uniqueLabels(techProfile?.languages ?? []),
+  frameworks: uniqueLabels(techProfile?.frameworks ?? []),
+  buildTools: uniqueLabels(techProfile?.buildTools ?? []),
+  commandRunner: techProfile?.commandRunner?.trim() || null,
+});
+
 const isHybridRootProject = (project: ProjectSnapshot) =>
   project.kind === "repo-root" &&
-  project.packageManagers.includes("cargo") &&
-  hasFrontendPackageManager(project);
+  hasFrontendPackageManager(project) &&
+  (
+    project.technology.frameworks.includes("Tauri") || project.technology.languages.includes("Rust")
+  );
 
 const emptyProjectSnapshot: ProjectSnapshot = {
   id: "",
@@ -59,42 +74,21 @@ const emptyProjectSnapshot: ProjectSnapshot = {
   inactiveDays: 0,
   kind: "single",
   profile: "未扫描",
-  stack: "待识别",
-  runtime: "unknown",
+  technology: {
+    languages: [],
+    frameworks: [],
+    buildTools: [],
+    commandRunner: null,
+  },
   workspaceRole: "未知",
   workspaceUnits: 0,
   startupCommands: [],
 };
 
-const toProjectSnapshot = (
-  project: {
-    id: string;
-    name: string;
-    path: string;
-    kind: string;
-    reclaimableBytes?: number;
-    inactiveDays?: number;
-    packageManager?: string;
-    packageManagers?: string[];
-    bundler?: string;
-    framework?: string;
-    runtime?: string;
-    workspaceUnits: number;
-    startupCommands: Array<{
-      label: string;
-      command: string;
-    }>;
-  },
-): ProjectSnapshot => {
+const toProjectSnapshot = (project: DiscoveredProject): ProjectSnapshot => {
   const normalizedKind = normalizeProjectKind(project.kind);
   const isRepoRoot = normalizedKind === "repo-root";
   const isPackage = normalizedKind === "package";
-  const normalizedFramework = project.framework && project.framework !== "unknown"
-    ? project.framework
-    : "unknown";
-  const normalizedBundler = project.bundler && project.bundler !== "unknown"
-    ? project.bundler
-    : "unknown";
   return {
     id: project.id,
     name: project.name,
@@ -104,18 +98,14 @@ const toProjectSnapshot = (
     inactiveDays: Math.max(0, Math.round(Number(project.inactiveDays || 0))),
     kind: normalizedKind,
     profile: isRepoRoot ? "仓库根目录" : isPackage ? "工作区子包" : "独立项目",
-    stack:
-      normalizedFramework !== "unknown" || normalizedBundler !== "unknown"
-        ? `${normalizedFramework} + ${normalizedBundler}`
-        : "待识别",
-    runtime: project.runtime ?? "unknown",
+    technology: normalizeTechnology(project.techProfile),
     workspaceRole: isRepoRoot ? "仓库根目录" : isPackage ? "monorepo 子包" : "单项目",
     workspaceUnits: Math.max(1, Math.round(Number(project.workspaceUnits || 1))),
     startupCommands: project.startupCommands ?? [],
   };
 };
 
-const createProjectState = (): ProjectState => {
+export const createProjectState = (): ProjectState => {
   const scan = useScanRoots();
   const [selectedProjectId, setSelectedProjectId] = createSignal("");
   const [monorepoMode, setMonorepoMode] = createSignal<MonorepoMode>("repoRootOnly");
@@ -167,5 +157,9 @@ const createProjectState = (): ProjectState => {
 };
 
 let projectState: ProjectState | null = null;
+
+export const resetProjectState = () => {
+  projectState = null;
+};
 
 export const useProject = () => projectState ?? (projectState = createRoot(() => createProjectState()));
