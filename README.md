@@ -127,3 +127,4 @@ The current version already covers project discovery, project overview, cleanup 
 - [ ] 从项目概览直接运行常用命令 / Run common commands directly from the project overview
 - [ ] 窄窗口下的布局与信息密度优化 / Better layout and information density in narrow windows
 - [ ] 项目环境提示：识别包管理器冲突、命令缺失和工作区结构异常 / Project environment hints for package manager conflicts, missing commands, and broken workspace structure
+- [ ] 配置github actions / Configure GitHub Actions
